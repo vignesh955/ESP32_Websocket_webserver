@@ -4,6 +4,11 @@
 #include <LittleFS.h>
 #include <WebServer.h>
 
+// Global variables
+bool ledState = false; // Virtual LED state
+const int LED_PIN = 2; // Built-in LED (GPIO2)
+// uint32_t counter = 0;     // Counter variable
+
 // WiFi credentials
 const char *ssid = "IOT2";
 const char *password = "369369369";
@@ -11,10 +16,8 @@ const char *password = "369369369";
 // WebSocket server on port 81
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-// Pin definitions
-const int LED_PIN = 2; // Built-in LED
-
-bool ledState = false;
+// Global variables
+uint32_t counter = 0;
 unsigned long startTime = 0;
 uint8_t clientCount = 0;
 bool useFilesystem = false;
@@ -165,9 +168,9 @@ void sendSystemInfo(uint8_t num)
   DynamicJsonDocument doc(512);
   doc["type"] = "system_info";
   doc["ledStatus"] = ledState;
+  doc["counter"] = counter;
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
-  doc["chipModel"] = ESP.getChipModel();
 
   String response;
   serializeJson(doc, response);
@@ -179,6 +182,7 @@ void sendSystemInfoToAll()
   DynamicJsonDocument doc(512);
   doc["type"] = "system_info";
   doc["ledStatus"] = ledState;
+  doc["counter"] = counter; //
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
 
@@ -257,17 +261,19 @@ void handleWebSocketMessage(uint8_t num, uint8_t *payload, size_t length)
       if (command == "LED_ON")
       {
         ledState = true;
+        // physically set built-in LED
         digitalWrite(LED_PIN, HIGH);
         webSocket.sendTXT(num, "LED turned ON");
-        Serial.println("LED turned ON");
+        Serial.println("LED turned ON (GPIO2 HIGH)");
         sendSystemInfoToAll();
       }
       else if (command == "LED_OFF")
       {
         ledState = false;
+        // physically clear built-in LED
         digitalWrite(LED_PIN, LOW);
         webSocket.sendTXT(num, "LED turned OFF");
-        Serial.println("LED turned OFF");
+        Serial.println("LED turned OFF (GPIO2 LOW)");
         sendSystemInfoToAll();
       }
       else if (command == "GET_STATUS")
@@ -391,10 +397,11 @@ void setup()
 
   Serial.println("\n=== ESP32 WebSocket Server ===");
 
-  // Initialize LED pin
+  // Initialize built-in LED (GPIO2)
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  Serial.println("LED pin initialized");
+  ledState = false;
+  Serial.println("Built-in LED (GPIO2) initialized and set LOW");
 
   // Initialize LittleFS
   Serial.println("Mounting LittleFS...");
@@ -446,9 +453,17 @@ void loop()
   webSocket.loop();
   server.handleClient();
 
-  // Broadcast system info every 10 seconds
+  // Increment counter every second
+  static unsigned long lastCount = 0;
+  if (millis() - lastCount > 1000)
+  {
+    lastCount = millis();
+    counter++;
+  }
+
+  // Broadcast system info every second (changed from 10 seconds to show real-time updates)
   static unsigned long lastBroadcast = 0;
-  if (millis() - lastBroadcast > 10000)
+  if (millis() - lastBroadcast > 1000)
   {
     lastBroadcast = millis();
     sendSystemInfoToAll();
@@ -456,7 +471,6 @@ void loop()
 
   while (WiFi.status() != WL_CONNECTED)
   {
-
     Serial.print(".");
     WiFi.begin(ssid, password);
     delay(1000);

@@ -20,10 +20,10 @@
         <div class="control-section">
             <h2>LED Control</h2>
             <div class="button-group">
-                <button class="btn btn-primary" onclick="sendCommand('LED_ON')">
+                <button id="btn-led-on" class="btn btn-primary" onclick="sendCommand('LED_ON')">
                     <span class="icon">💡</span> Turn LED ON
                 </button>
-                <button class="btn btn-secondary" onclick="sendCommand('LED_OFF')">
+                <button id="btn-led-off" class="btn btn-secondary" onclick="sendCommand('LED_OFF')">
                     <span class="icon">🔅</span> Turn LED OFF
                 </button>
                 <button class="btn btn-info" onclick="sendCommand('GET_STATUS')">
@@ -32,17 +32,13 @@
             </div>
         </div>
 
-        <div class="control-section">
-            <h2>GPIO Control</h2>
-            <div class="button-group">
-                <button class="btn btn-success" onclick="sendCommand('GPIO2_ON')">
-                    GPIO 2 ON
-                </button>
-                <button class="btn btn-warning" onclick="sendCommand('GPIO2_OFF')">
-                    GPIO 2 OFF
-                </button>
+            <div class="control-section">
+                <h2>Real-time Counter</h2>
+                <div class="counter-display">
+                    <span class="counter-label">ESP32 Counter:</span>
+                    <span id="esp-counter" class="counter-value">0</span>
+                </div>
             </div>
-        </div>
 
         <div class="info-section">
             <h2>System Information</h2>

@@ -119,7 +119,43 @@ class ESP32WebSocketClient {
                 const ledStatus = document.getElementById('led-status');
                 ledStatus.textContent = data.ledStatus ? 'ON' : 'OFF';
                 ledStatus.style.color = data.ledStatus ? '#2ecc71' : '#e74c3c';
+                // Highlight appropriate LED control button:
+                // when LED is ON, highlight the "Turn LED OFF" button (so user sees the action to take)
+                // when LED is OFF, highlight the "Turn LED ON" button.
+                try {
+                    const btnOn = document.getElementById('btn-led-on');
+                    const btnOff = document.getElementById('btn-led-off');
+                    if (btnOn && btnOff) {
+                        if (data.ledStatus) {
+                            btnOn.classList.remove('btn-active');
+                            btnOff.classList.add('btn-active');
+                        } else {
+                            btnOff.classList.remove('btn-active');
+                            btnOn.classList.add('btn-active');
+                        }
+                    }
+                } catch(e) {
+                    if (this.debug) console.log('Error updating LED button state:', e);
+                }
             }
+
+               // Update counter
+               if (data.counter !== undefined) {
+                   const counterElement = document.getElementById('esp-counter');
+                   if (counterElement) {
+                       const oldValue = parseInt(counterElement.textContent);
+                       const newValue = data.counter;
+                   
+                       // Add animation class if value changed
+                       if (oldValue !== newValue) {
+                           counterElement.classList.remove('pulse');
+                           void counterElement.offsetWidth; // Trigger reflow
+                           counterElement.classList.add('pulse');
+                       }
+                   
+                       counterElement.textContent = newValue;
+                   }
+               }
 
             if (data.freeHeap !== undefined) {
                 document.getElementById('free-heap').textContent =

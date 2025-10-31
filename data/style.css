@@ -114,6 +114,35 @@ h2 {
     box-shadow: 0 5px 15px rgba(0,0,0,0.2);
 }
 
+/* Active button highlight (used to show current action for LED) */
+.btn-active {
+    box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+    transform: translateY(-4px);
+    outline: 2px solid rgba(255,255,255,0.12);
+    filter: brightness(1.02);
+}
+
+/* LED control specific: use a single highlight color and fade the non-active button */
+#btn-led-on, #btn-led-off {
+    transition: all 0.25s ease;
+    opacity: 0.6; /* faded by default */
+    filter: grayscale(20%);
+}
+
+#btn-led-on.btn-active, #btn-led-off.btn-active {
+    /* single highlight color for active state */
+    background: #2ecc71 !important; /* green highlight */
+    color: #ffffff !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: translateY(-4px) !important;
+    box-shadow: 0 10px 28px rgba(46,204,113,0.18) !important;
+}
+
+#btn-led-on.btn-active .icon, #btn-led-off.btn-active .icon {
+    filter: none;
+}
+
 .btn-primary { background: #3498db; color: white; }
 .btn-secondary { background: #95a5a6; color: white; }
 .btn-success { background: #2ecc71; color: white; }
@@ -125,6 +154,34 @@ h2 {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+}
+
+/* Counter styles */
+.counter-display {
+    text-align: center;
+    padding: 30px;
+    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+    border-radius: 12px;
+    margin: 20px 0;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+
+.counter-label {
+    display: block;
+    font-size: 1.1em;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.counter-value {
+    font-size: 3.2em;
+    font-weight: 700;
+    color: #2c3e50;
+    font-family: 'Courier New', monospace;
+}
+
+.pulse {
+    animation: pulse 0.6s ease;
 }
 
 .info-grid {
