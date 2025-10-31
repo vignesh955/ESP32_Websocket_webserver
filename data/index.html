@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 WebSocket Control</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ESP32 WebSocket Control Panel</h1>
+            <div id="status" class="status disconnected">
+                <span class="status-dot"></span>
+                Disconnected
+            </div>
+        </header>
+
+        <div class="control-section">
+            <h2>LED Control</h2>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="sendCommand('LED_ON')">
+                    <span class="icon">💡</span> Turn LED ON
+                </button>
+                <button class="btn btn-secondary" onclick="sendCommand('LED_OFF')">
+                    <span class="icon">🔅</span> Turn LED OFF
+                </button>
+                <button class="btn btn-info" onclick="sendCommand('GET_STATUS')">
+                    <span class="icon">🔄</span> Get Status
+                </button>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h2>GPIO Control</h2>
+            <div class="button-group">
+                <button class="btn btn-success" onclick="sendCommand('GPIO2_ON')">
+                    GPIO 2 ON
+                </button>
+                <button class="btn btn-warning" onclick="sendCommand('GPIO2_OFF')">
+                    GPIO 2 OFF
+                </button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h2>System Information</h2>
+            <div id="system-info" class="info-grid">
+                <div class="info-item">
+                    <label>LED Status:</label>
+                    <span id="led-status">Unknown</span>
+                </div>
+                <div class="info-item">
+                    <label>Free Heap:</label>
+                    <span id="free-heap">-</span>
+                </div>
+                <div class="info-item">
+                    <label>Uptime:</label>
+                    <span id="uptime">-</span>
+                </div>
+                <div class="info-item">
+                    <label>Clients:</label>
+                    <span id="client-count">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="message-section">
+            <h2>WebSocket Messages</h2>
+            <div class="message-controls">
+                <button class="btn btn-outline" onclick="clearMessages()">Clear Messages</button>
+                <button class="btn btn-outline" onclick="toggleAutoScroll()">
+                    Auto-scroll: <span id="auto-scroll-status">ON</span>
+                </button>
+            </div>
+            <div id="messages" class="message-container"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
