@@ -5,23 +5,24 @@
 #include <WebServer.h>
 
 // WiFi credentials
-const char* ssid = "IOT";
-const char* password = "369369369";
+const char *ssid = "IOT2";
+const char *password = "369369369";
 
 // WebSocket server on port 81
 WebSocketsServer webSocket = WebSocketsServer(81);
 
 // Pin definitions
-const int LED_PIN = 2;  // Built-in LED
+const int LED_PIN = 2; // Built-in LED
 
 bool ledState = false;
 unsigned long startTime = 0;
 uint8_t clientCount = 0;
+bool useFilesystem = false;
 
 // Web server on port 80
 WebServer server(80);
 
-// Simple HTML embedded in code as fallback
+// Embedded HTML as fallback
 const char html_content[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -40,58 +41,63 @@ const char html_content[] PROGMEM = R"rawliteral(
         .btn-info { background: #17a2b8; color: white; }
         .messages { margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
         .message { margin: 5px 0; padding: 5px; border-left: 3px solid #007bff; background: white; }
+        .file-indicator { background: #ffc107; color: #856404; padding: 5px 10px; border-radius: 3px; font-size: 12px; margin-left: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>ESP32 WebSocket Control</h1>
+        <h1>ESP32 WebSocket Control
+            <span class="file-indicator" id="fileIndicator">Embedded</span>
+        </h1>
         <div id="status" class="status disconnected">Disconnected</div>
-        
+
         <div>
             <button class="button btn-on" onclick="sendCommand('LED_ON')">LED ON</button>
             <button class="button btn-off" onclick="sendCommand('LED_OFF')">LED OFF</button>
             <button class="button btn-info" onclick="sendCommand('GET_STATUS')">Get Status</button>
+            <button class="button" onclick="sendCommand('RESTART')" style="background: #6c757d; color: white;">Restart</button>
         </div>
-        
+
         <div id="systemInfo" style="margin: 20px 0; padding: 15px; background: #e9ecef; border-radius: 5px;">
             <strong>System Info:</strong><br>
             LED: <span id="ledStatus">Unknown</span><br>
             Heap: <span id="heap">-</span><br>
-            Uptime: <span id="uptime">-</span>
+            Uptime: <span id="uptime">-</span><br>
+            Filesystem: <span id="fsStatus">Embedded HTML</span>
         </div>
-        
+
         <div class="messages" id="messages"></div>
     </div>
 
     <script>
         var websocket;
-        
+
         function initWebSocket() {
             var wsUri = "ws://" + window.location.hostname + ":81/";
             websocket = new WebSocket(wsUri);
-            
+
             websocket.onopen = function(event) {
                 document.getElementById('status').className = 'status connected';
                 document.getElementById('status').textContent = 'Connected to ESP32';
                 addMessage('WebSocket connection opened');
             };
-            
+
             websocket.onclose = function(event) {
                 document.getElementById('status').className = 'status disconnected';
                 document.getElementById('status').textContent = 'Disconnected - Reconnecting...';
                 addMessage('WebSocket connection closed');
                 setTimeout(initWebSocket, 2000);
             };
-            
+
             websocket.onmessage = function(event) {
                 addMessage('Received: ' + event.data);
                 try {
                     var data = JSON.parse(event.data);
                     if (data.type === 'system_info') {
-                        document.getElementById('ledStatus').textContent = data.ledStatus ? 'ON' : 'OFF';
-                        document.getElementById('ledStatus').style.color = data.ledStatus ? '#28a745' : '#dc3545';
-                        document.getElementById('heap').textContent = Math.round(data.freeHeap / 1024) + ' KB';
-                        document.getElementById('uptime').textContent = formatUptime(data.uptime);
+                        updateSystemInfo(data);
+                    } else if (data.type === 'filesystem_status') {
+                        document.getElementById('fsStatus').textContent = data.status;
+                        document.getElementById('fileIndicator').textContent = data.usingFilesystem ? 'Filesystem' : 'Embedded';
                     }
                 } catch(e) {
                     // Not JSON, check for LED status messages
@@ -104,12 +110,19 @@ const char html_content[] PROGMEM = R"rawliteral(
                     }
                 }
             };
-            
+
             websocket.onerror = function(event) {
                 addMessage('WebSocket error: ' + event);
             };
         }
-        
+
+        function updateSystemInfo(data) {
+            document.getElementById('ledStatus').textContent = data.ledStatus ? 'ON' : 'OFF';
+            document.getElementById('ledStatus').style.color = data.ledStatus ? '#28a745' : '#dc3545';
+            document.getElementById('heap').textContent = Math.round(data.freeHeap / 1024) + ' KB';
+            document.getElementById('uptime').textContent = formatUptime(data.uptime);
+        }
+
         function sendCommand(command) {
             if (websocket && websocket.readyState === WebSocket.OPEN) {
                 var message = JSON.stringify({
@@ -123,7 +136,7 @@ const char html_content[] PROGMEM = R"rawliteral(
                 addMessage('WebSocket not connected');
             }
         }
-        
+
         function addMessage(message) {
             var messagesDiv = document.getElementById('messages');
             var messageElement = document.createElement('div');
@@ -132,14 +145,14 @@ const char html_content[] PROGMEM = R"rawliteral(
             messagesDiv.appendChild(messageElement);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
-        
+
         function formatUptime(seconds) {
             var hours = Math.floor(seconds / 3600);
             var minutes = Math.floor((seconds % 3600) / 60);
             var secs = seconds % 60;
             return hours + 'h ' + minutes + 'm ' + secs + 's';
         }
-        
+
         // Initialize when page loads
         window.onload = initWebSocket;
     </script>
@@ -147,178 +160,307 @@ const char html_content[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+void sendSystemInfo(uint8_t num)
+{
+  DynamicJsonDocument doc(512);
+  doc["type"] = "system_info";
+  doc["ledStatus"] = ledState;
+  doc["freeHeap"] = ESP.getFreeHeap();
+  doc["uptime"] = millis() / 1000;
+  doc["chipModel"] = ESP.getChipModel();
 
-void sendSystemInfo(uint8_t num) {
-    DynamicJsonDocument doc(512);
-    doc["type"] = "system_info";
-    doc["ledStatus"] = ledState;
-    doc["freeHeap"] = ESP.getFreeHeap();
-    doc["uptime"] = millis() / 1000;
-    doc["chipModel"] = ESP.getChipModel();
-    
-    String response;
-    serializeJson(doc, response);
-    webSocket.sendTXT(num, response);
+  String response;
+  serializeJson(doc, response);
+  webSocket.sendTXT(num, response);
 }
 
-void sendSystemInfoToAll() {
-    DynamicJsonDocument doc(512);
-    doc["type"] = "system_info";
-    doc["ledStatus"] = ledState;
-    doc["freeHeap"] = ESP.getFreeHeap();
-    doc["uptime"] = millis() / 1000;
-    
-    String response;
-    serializeJson(doc, response);
-    webSocket.broadcastTXT(response);
+void sendSystemInfoToAll()
+{
+  DynamicJsonDocument doc(512);
+  doc["type"] = "system_info";
+  doc["ledStatus"] = ledState;
+  doc["freeHeap"] = ESP.getFreeHeap();
+  doc["uptime"] = millis() / 1000;
+
+  String response;
+  serializeJson(doc, response);
+  webSocket.broadcastTXT(response);
 }
 
+void sendFilesystemStatus(uint8_t num)
+{
+  DynamicJsonDocument doc(256);
+  doc["type"] = "filesystem_status";
+  doc["usingFilesystem"] = useFilesystem;
+  doc["status"] = useFilesystem ? "LittleFS Active" : "Embedded HTML";
 
-void handleWebSocketMessage(uint8_t num, uint8_t * payload, size_t length) {
-    DynamicJsonDocument doc(1024);
-    DeserializationError error = deserializeJson(doc, payload);
-    
-    if (!error) {
-        String type = doc["type"];
-        String command = doc["command"];
-        
-        if (type == "command") {
-            if (command == "LED_ON") {
-                ledState = true;
-                digitalWrite(LED_PIN, HIGH);
-                webSocket.sendTXT(num, "LED turned ON");
-                Serial.println("LED turned ON");
-                sendSystemInfoToAll();
-                
-            } else if (command == "LED_OFF") {
-                ledState = false;
-                digitalWrite(LED_PIN, LOW);
-                webSocket.sendTXT(num, "LED turned OFF");
-                Serial.println("LED turned OFF");
-                sendSystemInfoToAll();
-                
-            } else if (command == "GET_STATUS") {
-                sendSystemInfo(num);
-                Serial.println("Status requested");
-            }
-        }
-    } else {
-        // If not JSON, echo as plain text
-        String message = String((char*)payload);
-        webSocket.sendTXT(num, "Echo: " + message);
-    }
+  String response;
+  serializeJson(doc, response);
+  webSocket.sendTXT(num, response);
 }
 
-void handleRoot() {
-    Serial.println("Serving embedded HTML page");
-    server.send(200, "text/html", html_content);
-}
+void listAllFiles()
+{
+  Serial.println("=== LittleFS File Listing ===");
+  File root = LittleFS.open("/");
+  if (!root)
+  {
+    Serial.println("Failed to open root directory");
+    return;
+  }
 
-void handleNotFound() {
-    server.send(404, "text/plain", "File Not Found");
-}
+  if (!root.isDirectory())
+  {
+    Serial.println("Root is not a directory");
+    root.close();
+    return;
+  }
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
-    switch(type) {
-        case WStype_DISCONNECTED:
-            Serial.printf("[%u] Disconnected!\n", num);
-            clientCount = webSocket.connectedClients();
-            break;
-            
-        case WStype_CONNECTED:
-            {
-                IPAddress ip = webSocket.remoteIP(num);
-                Serial.printf("[%u] Connected from %s\n", num, ip.toString().c_str());
-                
-                // Send welcome message
-                String welcomeMsg = "Connected to ESP32. Client #" + String(num);
-                webSocket.sendTXT(num, welcomeMsg);
-                
-                // Send initial status
-                sendSystemInfo(num);
-                clientCount = webSocket.connectedClients();
-            }
-            break;
-            
-        case WStype_TEXT:
-            Serial.printf("[%u] Received: %s\n", num, payload);
-            handleWebSocketMessage(num, payload, length);
-            break;
-            
-        case WStype_BIN:
-            Serial.printf("[%u] Received binary length: %u\n", num, length);
-            break;
-    }
-}
+  File file = root.openNextFile();
+  int fileCount = 0;
 
-void setup() {
-    Serial.begin(115200);
-    delay(1000);
-    
-    Serial.println("\n=== ESP32 WebSocket Server ===");
-    
-    // Initialize LED pin
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
-    Serial.println("LED pin initialized");
-    
-    // Try to initialize LittleFS (but don't fail if it doesn't work)
-    Serial.println("Mounting LittleFS...");
-    if (LittleFS.begin(true)) {
-        Serial.println("LittleFS mounted successfully");
-        
-        // List files to see what's available
-        Serial.println("Listing files:");
-        File root = LittleFS.open("/");
-        File file = root.openNextFile();
-        while(file){
-            Serial.printf("  %s (%d bytes)\n", file.name(), file.size());
-            file = root.openNextFile();
-        }
-        root.close();
-    } else {
-        Serial.println("LittleFS mount failed - using embedded HTML");
-    }
-    
-    // Connect to WiFi
-    Serial.printf("Connecting to WiFi: %s", ssid);
-    WiFi.begin(ssid, password);
-    
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.print(".");
-    }
-    
-    Serial.println("\nConnected to WiFi!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    
-    // Setup HTTP routes
-    server.on("/", handleRoot);
-    server.onNotFound(handleNotFound);
-    
-    // Start servers
-    server.begin();
-    webSocket.begin();
-    webSocket.onEvent(webSocketEvent);
-    
-    Serial.println("HTTP server started on port 80");
-    Serial.println("WebSocket server started on port 81");
-    Serial.println("Open http://" + WiFi.localIP().toString() + " in your browser");
-    
-    startTime = millis();
-}
+  while (file)
+  {
+    fileCount++;
+    Serial.printf("  File: %s, Size: %d bytes\n", file.name(), file.size());
+    file = root.openNextFile();
+  }
 
-void loop() {
-    webSocket.loop();
-    server.handleClient();
-    
-    // Broadcast system info every 10 seconds
-    static unsigned long lastBroadcast = 0;
-    if (millis() - lastBroadcast > 10000) {
-        lastBroadcast = millis();
+  root.close();
+
+  if (fileCount == 0)
+  {
+    Serial.println("  No files found in LittleFS");
+  }
+  else
+  {
+    Serial.printf("Total files: %d\n", fileCount);
+    useFilesystem = true;
+  }
+  Serial.println("=============================");
+}
+void handleWebSocketMessage(uint8_t num, uint8_t *payload, size_t length)
+{
+  String receivedPayload = String((char *)payload);
+  Serial.println("Received WebSocket message: " + receivedPayload); // Debug lineF
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, payload);
+
+  if (!error)
+  {
+    String type = doc["type"];
+    String command = doc["command"];
+    Serial.println("Message type: " + type); // Debug line
+    Serial.println("Command: " + command);   // Debug line
+    if (type == "command")
+    {
+      if (command == "LED_ON")
+      {
+        ledState = true;
+        digitalWrite(LED_PIN, HIGH);
+        webSocket.sendTXT(num, "LED turned ON");
+        Serial.println("LED turned ON");
         sendSystemInfoToAll();
+      }
+      else if (command == "LED_OFF")
+      {
+        ledState = false;
+        digitalWrite(LED_PIN, LOW);
+        webSocket.sendTXT(num, "LED turned OFF");
+        Serial.println("LED turned OFF");
+        sendSystemInfoToAll();
+      }
+      else if (command == "GET_STATUS")
+      {
+        sendSystemInfo(num);
+        sendFilesystemStatus(num);
+        Serial.println("Status requested");
+      }
+      else if (command == "RESTART")
+      {
+        webSocket.sendTXT(num, "Restarting ESP32...");
+        delay(1000);
+        ESP.restart();
+      }
     }
-    
-    delay(10);
+  }
+  else
+  {
+    // If not JSON, echo as plain text
+    String message = String((char *)payload);
+    webSocket.sendTXT(num, "Echo: " + message);
+  }
+}
+
+void handleRoot()
+{
+  Serial.println("Serving web page");
+  if (useFilesystem && LittleFS.exists("/index.html"))
+  {
+    Serial.println("Using filesystem index.html");
+    File file = LittleFS.open("/index.html", "r");
+    server.streamFile(file, "text/html");
+    file.close();
+  }
+  else
+  {
+    Serial.println("Using embedded HTML");
+    server.send(200, "text/html", html_content);
+  }
+}
+
+void handleCSS()
+{
+  if (useFilesystem && LittleFS.exists("/style.css"))
+  {
+    File file = LittleFS.open("/style.css", "r");
+    server.streamFile(file, "text/css");
+    file.close();
+    Serial.println("Served style.css from LittleFS");
+  }
+  else
+  {
+    server.send(404, "text/plain", "CSS not found");
+    Serial.println("style.css not found in LittleFS");
+  }
+}
+
+void handleJS()
+{
+  if (useFilesystem && LittleFS.exists("/script.js"))
+  {
+    File file = LittleFS.open("/script.js", "r");
+    server.streamFile(file, "application/javascript");
+    file.close();
+    Serial.println("Served script.js from LittleFS");
+  }
+  else
+  {
+    server.send(404, "text/plain", "JS not found");
+    Serial.println("script.js not found in LittleFS");
+  }
+}
+
+void handleNotFound()
+{
+  server.send(404, "text/plain", "File Not Found: " + server.uri());
+  Serial.println("404 Not Found: " + server.uri());
+}
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t length)
+{
+  switch (type)
+  {
+  case WStype_DISCONNECTED:
+    Serial.printf("[%u] Disconnected!\n", num);
+    clientCount = webSocket.connectedClients();
+    break;
+
+  case WStype_CONNECTED:
+  {
+    IPAddress ip = webSocket.remoteIP(num);
+    Serial.printf("[%u] Connected from %s\n", num, ip.toString().c_str());
+
+    // Send welcome message
+    String welcomeMsg = "Connected to ESP32. Client #" + String(num);
+    webSocket.sendTXT(num, welcomeMsg);
+
+    // Send initial status
+    sendSystemInfo(num);
+    sendFilesystemStatus(num);
+    clientCount = webSocket.connectedClients();
+  }
+  break;
+
+  case WStype_TEXT:
+    Serial.printf("[%u] Received: %s\n", num, payload);
+    handleWebSocketMessage(num, payload, length);
+    break;
+
+  case WStype_BIN:
+    Serial.printf("[%u] Received binary length: %u\n", num, length);
+    break;
+  }
+}
+
+void setup()
+{
+  delay(5000);
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n=== ESP32 WebSocket Server ===");
+
+  // Initialize LED pin
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  Serial.println("LED pin initialized");
+
+  // Initialize LittleFS
+  Serial.println("Mounting LittleFS...");
+  if (LittleFS.begin(true))
+  {
+    Serial.println("LittleFS mounted successfully");
+    listAllFiles();
+  }
+  else
+  {
+    Serial.println("LittleFS mount failed");
+    useFilesystem = false;
+  }
+
+  // Connect to WiFi
+  Serial.printf("Connecting to WiFi: %s", ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to WiFi!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Setup HTTP routes
+  server.on("/", handleRoot);
+  server.on("/style.css", handleCSS);
+  server.on("/script.js", handleJS);
+  server.onNotFound(handleNotFound);
+
+  // Start servers
+  server.begin();
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  Serial.println("HTTP server started on port 80");
+  Serial.println("WebSocket server started on port 81");
+  Serial.println("Ready! Open http://" + WiFi.localIP().toString() + " in your browser");
+
+  startTime = millis();
+}
+
+void loop()
+{
+  webSocket.loop();
+  server.handleClient();
+
+  // Broadcast system info every 10 seconds
+  static unsigned long lastBroadcast = 0;
+  if (millis() - lastBroadcast > 10000)
+  {
+    lastBroadcast = millis();
+    sendSystemInfoToAll();
+  }
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+
+    Serial.print(".");
+    WiFi.begin(ssid, password);
+    delay(1000);
+  }
+
+  delay(10);
 }
